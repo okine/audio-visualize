@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>Audio Visualizer</title>
+        <script src="https://cdn.bootcdn.net/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+        <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css" 
+        integrity="sha384-HSMxcRTRxnN+Bdg0JdbxYKrThecOKuH5zCYotlSAcp1+c8xmyTe9GYg1l9a69psu" crossorigin="anonymous">
+        <script src="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js" 
+        integrity="sha384-aJ21OjlMXNL5UyIl/XNwTMqvzeRMZH2w8c5cRVpzpU8Y5bApTppSuUkhZXN0VxHd" crossorigin="anonymous">
+        </script>
+        <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+        <link rel="icon" href="favoricon.jpg">
+        <style>
+            html {
+            overflow-y: scroll;
+            }
+
+            :root {
+            overflow-y: auto;
+            overflow-x: hidden;
+            }
+
+            :root body {
+            position: absolute;
+            }
+
+            body {
+            width: 100vw;
+            overflow: hidden;
+            }
+            canvas {
+                margin-top: 20px;
+                margin-bottom: 10px;  
+            }
+            button {
+                margin: 0px;
+            }
+            .tooltip {
+                visibility: hidden;
+                background-color: #000;
+                color: #fff;
+                text-align: center;
+                border-radius: 6px;
+                padding:0px;
+            }
+        </style>
+    </head>
+    <body style="width: auto; margin: 0;padding: 0">
+        <div>
+            <ul id=scheme_bar class="nav nav-tabs" style="display: none;">
+                <li role="presentation" class="active"><a href="#">方案一</a></li>
+                <li role="presentation"><a href="#">方案二</a></li>
+                <li role="presentation"><a href="#">方案三</a></li>
+            </ul>
+            
+            <button  id="upload" onclick="document.getElementById('file-input').click();"style="position: absolute;top: 49%;left: 49%;">点击上传音乐</button>
+            <input type="file" id="file-input" accept="audio/*"style="position: absolute;top: 49%;left: 49%;visibility:hidden;">
+            <audio id="audio" loop>
+                <source id="audio-source" type="audio/mp3" >
+                Your browser does not support the audio element.
+            </audio>
+            <canvas id="default_canvas" style="display: block;"></canvas>
+            <canvas id="second_canvas" style="display: none;"></canvas>
+            <canvas id="third_canvas" style="display: none;"></canvas>
+            <div id="bottom" style="display: none;">
+                <div style="height:28px;width:210px;border: 1px solid #000; border-radius: 14px;display: inline-block;position: relative;bottom: 6px;">
+                <img id="situation_play" src="play.png" alt="播放" style="height:25px;width:25px;cursor: pointer;position: relative;top: 1px;">
+                <img id="situation_pause" src="pause.png" alt="暂停" style="height:25px;width:25px;cursor: pointer;position: relative;top: 1px;">
+                <span> <span id="time">0</span>s</span>
+                <span>/</span>
+                <span><span id="duration">0</span>s</span>
+                <progress id="progress-bar" value="0" max="100" display="float"style="width: 90px;position: relative;top: 4px;"></progress>
+                </div>
+                <details style="display: inline;cursor: pointer;">
+                    <summary>点击更改背景颜色 </summary>
+                    <p>
+                    <label>红色值</label><input type="range" id="bgRedRange" class="bgRange" min="0" max="255" step="1" value="220" style="width: 60px;">
+                    <span id="bgRangeTip" class="tooltip" style="visibility: hidden;">0</span>
+                    <label>绿色值</label><input type="range" id="bgGreenRange" class="bgRange" min="0" max="255" step="1" value="220" style="width: 60px;">
+                    <label>蓝色值</label><input type="range" id="bgBlueRange" class="bgRange" min="0" max="255" step="1" value="220" style="width: 60px;">
+                    </p>
+                </details>
+                <details style="display: inline;cursor: pointer;">
+                    <summary> 点击更改条形外观</summary>
+                    <p>
+                    <label>红色值</label><input type="range" id="recRedRange" class="recRange" min="0" max="2.55" step="0.01" value="0.39" style="width: 60px;">
+                    <label>绿色值</label><input type="range" id="recGreenRange" class="recRange" min="0" max="2.55" step="0.01" value="1.87" style="width: 60px;">
+                    <label>蓝色值</label><input type="range" id="recBlueRange" class="recRange" min="0" max="2.55" step="0.01" value="1.97" style="width: 60px;">
+                    <label>灵敏度</label><input type="range" id="sensitivity" class="recRange" min="0.5" max="3.5" step="0.2" value="1.5" style="width: 60px;">
+                    <label>条形密度</label><input type="range" id="density" class="recRange" min="1.5" max="7" step="0.5" value="2.5" style="width: 60px;">
+                    </p>
+                </details>
+                <button id="export">导出视频</button>    
+                 
+            </div>
+        </div>
+    
+        <script>
+            //当页面加载完成时
+            $(document).ready(function() {
+                var audioCtx;
+                var audioElement = document.getElementById('audio');
+                var audioSrc;
+                var analyser;
+                var canvas = document.getElementById("default_canvas");
+                var ctx = canvas.getContext("2d");
+                var width = window.innerWidth;
+                var height = window.innerHeight - 200;
+                var bgRednum = bgRedRange.value;
+                var bgGreennum = bgGreenRange.value;
+                var bgBluenum = bgBlueRange.value;
+                var recRednum = recRedRange.value;
+                var recGreennum = recGreenRange.value;
+                var recBluenum = recBlueRange.value;
+                var sensinum =sensitivity.value;
+                var densitynum=density.value;
+                canvas.width = width;
+                canvas.height = height;
+                $("#file-input").on("change", function(e) {
+                    $("#upload").css({'position':'relative', 'top':'-35px', 'left': '0px'});
+                    $("ul").css({'position':'relative', 'top':'35px', 'left': '0px'});
+                    $("ul").show();
+                    if(!audioCtx){
+                        audioElement.currentTime = 0;
+                        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                        audioSrc = audioCtx.createMediaElementSource(audioElement);
+                        console.log("建立连接");
+                        analyser = audioCtx.createAnalyser();
+                    }
+                    // Connect the audio source to the analyser
+                    audioSrc.connect(analyser);
+                    analyser.connect(audioCtx.destination);
+                    // Create a new AudioContext once the user clicks
+                    lastFile = e.target.files[0];
+                    var audioSource = document.getElementById('audio-source');
+                    audioSource.src = URL.createObjectURL(lastFile);
+                    audioElement.load();
+                    audioElement.currentTime = 0;
+                    audioElement.play();
+                    $("#bottom").show();
+                    renderFrame()
+                    $("#export").prop("disabled", false);
+                });
+                var progressBar = document.getElementById("progress-bar");
+
+                //设置背景颜色
+                $(".bgRange").hover(
+                    function() {        // 鼠标进入
+                        $("bgRangeTip").text(bgRednum.value);
+                        $("bgRangeTip").show();
+                    },
+                            )
+                $(".bgRange").on("input", function () {
+                     bgRednum = bgRedRange.value;
+                     bgGreennum = bgGreenRange.value;
+                     bgBluenum = bgBlueRange.value;
+                });
+
+                //设置矩形样式
+                $(".recRange").on("input", function () {
+                    recRednum = recRedRange.value;
+                    recGreennum = recGreenRange.value;
+                    recBluenum = recBlueRange.value;
+                    sensinum =sensitivity.value;
+                    densitynum=density.value;
+                });
+                //开始与暂停
+                $("#situation_play").on("click", function() {
+                    if(!audioSrc){
+                        audioSrc = audioCtx.connect(audioElement);
+                        analyser = audioCtx.createAnalyser();
+                    }
+                    audio.play();
+                    console.log("played");
+                    console.log("已连接");
+                    console.log(audioSrc);
+                    $("#situation_play").hide();
+                    $("#situation_pause").show();
+                });
+    
+                $("#situation_pause").on("click", function() {
+                    audio.pause();
+                    console.log("paused");
+                    $("#situation_pause").hide();
+                    $("#situation_play").show();
+                });
+    
+                // 监听音频播放状态
+                audio.addEventListener("play", function() {
+                    $("#situation_pause").show();
+                    $("#situation_play").hide();
+                });
+    
+                audio.addEventListener("pause", function() {
+                    $("#situation_play").show();
+                    $("#situation_pause").hide();
+                });
+    
+                // 更新音乐进度条
+                audio.addEventListener('timeupdate', function(){
+                    var progressBar = document.querySelector('progress');
+                    var progressNum = 0;
+                    if(audioSrc&&audio.duration) {
+                        
+                        var progressNum = parseInt(audio.currentTime / audio.duration * 100);
+                    }
+                        progressBar.value = progressNum;
+                });
+    
+                // 拖拽音乐进度条更新播放位置
+                var isDragging = false;
+    
+                progressBar.addEventListener('mousedown', function(e){
+                    isDragging = true;
+                    updateProgressBar(e.offsetX);
+                });
+    
+                progressBar.addEventListener('mousemove', function(e){
+                    if(isDragging) {
+                        updateProgressBar(e.offsetX);
+                    }
+                });
+    
+                progressBar.addEventListener('mouseup', function(e){
+                    isDragging = false;
+                });
+    
+                function updateProgressBar(x) {
+                    var percent = x / progressBar.offsetWidth;
+                    audio.currentTime = percent * audio.duration;
+                }
+                // Initial visualization settings
+                setInterval(function() {
+                    if(audioCtx){
+                    var currentTime = audioElement.currentTime.toFixed(0);
+                    var duration;
+                    duration = audioElement.duration.toFixed(0);
+                    $("#time").text(currentTime);
+                    $("#duration").text(duration);
+                    }
+                }, 1000);
+                function renderFrame() {
+                    requestAnimationFrame(renderFrame);
+                    var bufferLength = analyser.frequencyBinCount;
+                    var dataArray = new Uint8Array(bufferLength);
+                    analyser.getByteFrequencyData(dataArray);
+                    ctx.fillStyle="rgb("+bgRednum+","+bgGreennum+","+bgBluenum+")"
+                    // 设置画布背景颜色为选定的背景颜色
+                    ctx.fillRect(0, 0, width, height);
+                    var barWidth = (width / bufferLength) * densitynum;
+                    var barHeight;
+                    var x = 0;
+                    for(var i = 0; i < bufferLength; i++) {
+                        barHeight = dataArray[i];
+                        ctx.fillStyle = "rgb("+sensinum*recRednum*barHeight/2+ ","+sensinum*recGreennum*barHeight/2+","+sensinum*recBluenum*barHeight/2+")";
+                        ctx.fillRect(x,height-barHeight/2,barWidth,barHeight/2);
+                        x += barWidth + 2;
+                    }
+                }
+            });
+            // 点击开始录制按钮时，开始录制动画帧并添加到存储数组中
+            $("#export").click(function() {
+                var audioElement = document.getElementById('audio');
+                var stream = default_canvas.captureStream();
+				var recordedChunks = [];
+				var mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codec=vp9' });
+                $("body").css("pointer-events", "none");
+                $(document).keydown(function(event){
+                    event.preventDefault();
+                });
+                audioElement.currentTime=0;
+                audioElement.play;
+				mediaRecorder.ondataavailable = function(e) {
+				    if (e.data.size > 0) {
+				        recordedChunks.push(e.data);
+				    }
+				};
+				mediaRecorder.onstop = function() {
+				    var blob = new Blob(recordedChunks, { type: 'video/webm' });
+				    var url = URL.createObjectURL(blob);
+				    var link = document.createElement('a');
+				    link.download = 'visualization.webm';
+				    link.href = url;
+				    link.click();
+				    window.URL.revokeObjectURL(url);
+				};
+				mediaRecorder.start();
+				setTimeout(function() {
+				    mediaRecorder.stop();
+                    $("body").css("pointer-events", "auto");
+                    $(document).off('keydown');
+				}, (audioElement.duration) * 1000);
+                const { createFFmpeg, fetchFile } = FFmpeg;
+                const ffmpeg = createFFmpeg({ log: true });
+			});
+        </script>
+        
+    </body>
+</html>
